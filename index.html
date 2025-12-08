@@ -4,15 +4,68 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>P-Shop</title>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Firebase v9 -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getAuth, signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+    import { getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, addDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+    import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDXEYud7yZtVJTp-sAdLPX6Q50a40IRcuI",
+      authDomain: "p-shop-f2321.firebaseapp.com",
+      databaseURL: "https://p-shop-f2321-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "p-shop-f2321",
+      storageBucket: "p-shop-f2321.firebasestorage.app",
+      messagingSenderId: "638111966798",
+      appId: "1:638111966798:web:ea4bc8f4751ba730b5851f",
+      measurementId: "G-RL45110P1D"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const storage = getStorage(app);
+
+    window.firebaseAuth = auth;
+    window.firebaseDb = db;
+    window.firebaseStorage = storage;
+    window.firebaseUtils = {
+      signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword,
+      signInWithEmailAndPassword, onAuthStateChanged, signOut,
+      collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc,
+      onSnapshot, query, where, orderBy, addDoc,
+      storageRef, uploadBytes, getDownloadURL
+    };
+
+    console.log('✅ Firebase initialisé');
+  </script>
 </head>
 <body>
   <div id="root"></div>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- QRCode.js pour générer les QR codes -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
   <script type="text/babel">
-    const { useState, useMemo, useCallback, useEffect } = React;
+    const { useState, useEffect, useMemo, useCallback } = React;
+
+    const waitForFirebase = () => {
+      return new Promise((resolve) => {
+        const check = setInterval(() => {
+          if (window.firebaseAuth && window.firebaseDb && window.firebaseUtils) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 100);
+      });
+    };
 
     // ==================== CONFIGURATION ====================
     const INITIAL_FLAVORS = [
@@ -89,13 +142,16 @@
       </div>
     );
 
-// ==================== FIN PARTIE 1/6 ====================
-// COPIEZ LA PARTIE 2/6 JUSTE APRÈS CETTE LIGNE
 // ==================== PARTIE 2/6 : MODALS & UTILITAIRES ====================
 
     // Fonction pour générer un code de parrainage unique
     const generateReferralCode = (name) => {
       return `PUFF${name.toUpperCase().substring(0, 3)}${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    };
+
+    // Fonction pour générer un QR Code unique pour chaque commande
+    const generateOrderQRCode = (orderId) => {
+      return `PSHOP_ORDER_${orderId}`;
     };
 
     // Fonction pour calculer le palier de fidélité
@@ -274,43 +330,87 @@
       );
     };
 
-    // ==================== MODAL SCANNER QR CODE ====================
+    // ==================== MODAL SCANNER QR CODE AVEC CAMÉRA RÉELLE ====================
     const QRScannerModal = ({ onClose, onValidate }) => {
       const [orderCode, setOrderCode] = useState('');
       const [scanning, setScanning] = useState(false);
+      const videoRef = React.useRef(null);
+      const streamRef = React.useRef(null);
+
+      const startCamera = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'environment' } 
+          });
+          streamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.play();
+          }
+          setScanning(true);
+        } catch (err) {
+          alert('Impossible d\'accéder à la caméra. Veuillez vérifier les permissions.');
+          console.error('Camera error:', err);
+        }
+      };
+
+      const stopCamera = () => {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+        setScanning(false);
+      };
+
+      useEffect(() => {
+        return () => stopCamera();
+      }, []);
 
       const handleValidate = () => {
         if (!orderCode.trim()) {
           alert('Veuillez entrer un code de commande');
           return;
         }
+        stopCamera();
         onValidate(orderCode);
         onClose();
       };
 
+      const handleClose = () => {
+        stopCamera();
+        onClose();
+      };
+
       return (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={handleClose}>
           <div className={`${S.card} max-w-lg w-full`} onClick={e => e.stopPropagation()}>
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-black text-white flex items-center gap-2">
                   📷 Scanner QR Code
                 </h2>
-                <button onClick={onClose} className="text-pink-400 hover:text-pink-300">
+                <button onClick={handleClose} className="text-pink-400 hover:text-pink-300">
                   <Icon name="X" size={24} />
                 </button>
               </div>
 
               {!scanning ? (
-                <Button onClick={() => setScanning(true)} className="w-full mb-6">
+                <Button onClick={startCamera} className="w-full mb-6">
                   <Icon name="Camera" size={20} />
                   ACTIVER LA CAMÉRA
                 </Button>
               ) : (
-                <div className="bg-white/5 rounded-xl p-8 mb-6 text-center border-2 border-pink-500/30">
-                  <Icon name="Camera" size={64} className="mx-auto text-pink-400 mb-4" />
-                  <p className="text-pink-300 mb-4">Caméra active...</p>
-                  <Button onClick={() => setScanning(false)} variant="secondary">
+                <div className="mb-6">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-64 bg-black rounded-xl object-cover"
+                  />
+                  <Button onClick={stopCamera} variant="secondary" className="w-full mt-3">
                     Arrêter le scanner
                   </Button>
                 </div>
@@ -340,7 +440,7 @@
       );
     };
 
-    // ==================== MODAL MENU MOBILE ====================
+    // ==================== MODAL MENU MOBILE (SLIDE GAUCHE → DROITE) ====================
     const MobileMenu = ({ user, onNavigate, onLogout, onClose }) => {
       const menuItems = user.role === 'client' ? [
         { icon: 'Home', label: 'Accueil', view: 'home' },
@@ -359,50 +459,115 @@
 
       return (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50" onClick={onClose}>
-          <div className="bg-gradient-to-br from-purple-900/95 via-pink-800/95 to-orange-700/95 w-80 h-full p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-black text-white">Menu</h2>
-              <button onClick={onClose} className="text-pink-400 hover:text-pink-300">
-                <Icon name="X" size={28} />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {menuItems.map((item, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => { onNavigate(item.view); onClose(); }}
-                  className="w-full flex items-center gap-4 p-4 rounded-xl bg-white/5 hover:bg-white/10 text-pink-100 transition"
-                >
-                  <Icon name={item.icon} size={24} />
-                  <span className="text-lg">{item.label}</span>
+          {/* Menu qui slide DEPUIS LA GAUCHE */}
+          <div 
+            className="absolute left-0 top-0 h-full bg-gradient-to-br from-purple-900/95 via-pink-800/95 to-orange-700/95 w-80 shadow-2xl animate-slide-in-left"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-6 h-full flex flex-col">
+              <div className="flex justify-between items-center mb-8">
+                <h2 className="text-2xl font-black text-white">Menu</h2>
+                <button onClick={onClose} className="text-pink-400 hover:text-pink-300">
+                  <Icon name="X" size={28} />
                 </button>
-              ))}
-
-              <button
-                onClick={() => { onLogout(); onClose(); }}
-                className="w-full flex items-center gap-4 p-4 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 transition mt-6"
-              >
-                <Icon name="LogOut" size={24} />
-                <span className="text-lg">Déconnexion</span>
-              </button>
-            </div>
-
-            {user && (
-              <div className="absolute bottom-6 left-6 right-6">
-                <div className="bg-black/40 rounded-xl p-4 border-2 border-pink-500/30">
-                  <p className="text-pink-300 text-sm mb-1">👋 Connecté en tant que</p>
-                  <p className="text-white font-bold text-lg">{user.name}</p>
-                </div>
               </div>
-            )}
+
+              <div className="space-y-2 flex-1 overflow-y-auto">
+                {menuItems.map((item, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => { onNavigate(item.view); onClose(); }}
+                    className="w-full flex items-center gap-4 p-4 rounded-xl bg-white/5 hover:bg-white/10 text-pink-100 transition"
+                  >
+                    <Icon name={item.icon} size={24} />
+                    <span className="text-lg">{item.label}</span>
+                  </button>
+                ))}
+
+                <button
+                  onClick={() => { onLogout(); onClose(); }}
+                  className="w-full flex items-center gap-4 p-4 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 transition mt-6"
+                >
+                  <Icon name="LogOut" size={24} />
+                  <span className="text-lg">Déconnexion</span>
+                </button>
+              </div>
+
+              {user && (
+                <div className="mt-6">
+                  <div className="bg-black/40 rounded-xl p-4 border-2 border-pink-500/30">
+                    <p className="text-pink-300 text-sm mb-1">👋 Connecté en tant que</p>
+                    <p className="text-white font-bold text-lg">{user.name}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ==================== MODAL QR CODE AFFICHAGE ====================
+    const QRCodeDisplayModal = ({ orderId, onClose }) => {
+      const qrContainerRef = React.useRef(null);
+      const qrCode = generateOrderQRCode(orderId);
+
+      useEffect(() => {
+        if (qrContainerRef.current && window.QRCode) {
+          qrContainerRef.current.innerHTML = '';
+          new window.QRCode(qrContainerRef.current, {
+            text: qrCode,
+            width: 256,
+            height: 256,
+            colorDark: '#ec4899',
+            colorLight: '#ffffff'
+          });
+        }
+      }, [qrCode]);
+
+      return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+          <div className={`${S.card} max-w-md w-full`} onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-black text-white">📱 QR Code Commande</h2>
+                <button onClick={onClose} className="text-pink-400 hover:text-pink-300">
+                  <Icon name="X" size={24} />
+                </button>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl mb-6 inline-block">
+                <div ref={qrContainerRef}></div>
+              </div>
+
+              <p className="text-white font-bold text-xl mb-2">Commande #{orderId}</p>
+              <p className="text-pink-300 text-sm mb-4">Code: {qrCode}</p>
+              <p className="text-pink-300/70 text-xs">
+                Présentez ce QR code au livreur lors de la réception
+              </p>
+            </div>
           </div>
         </div>
       );
     };
 
 // ==================== FIN PARTIE 2/6 ====================
-// COPIEZ LA PARTIE 3/6 JUSTE APRÈS CETTE LIGNE
+// Animation pour le menu qui slide DEPUIS LA GAUCHE
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes slide-in-left {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  .animate-slide-in-left {
+    animation: slide-in-left 0.3s ease-out;
+  }
+`;
+document.head.appendChild(style);
 // ==================== PARTIE 3/6 : VUE LOGIN & NAVIGATION ====================
 
     // ==================== VUE LOGIN/INSCRIPTION ====================
@@ -410,26 +575,129 @@
       const [mode, setMode] = useState('login');
       const [form, setForm] = useState({ 
         name: '', 
+        email: '',
         password: '', 
         confirmPassword: '', 
         phone: '',
         referralCode: '' 
       });
-      
-      const handleSubmit = () => {
-        if (!form.name || !form.password) {
-          return alert('Veuillez remplir tous les champs');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      // Connexion Google
+      const handleGoogleSignIn = async () => {
+        setLoading(true);
+        setError('');
+        try {
+          const { signInWithPopup, GoogleAuthProvider, doc, setDoc, getDoc } = window.firebaseUtils;
+          const provider = new GoogleAuthProvider();
+          const result = await signInWithPopup(window.firebaseAuth, provider);
+          
+          const userRef = doc(window.firebaseDb, 'users', result.user.uid);
+          const userSnap = await getDoc(userRef);
+          
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              name: result.user.displayName,
+              email: result.user.email,
+              photo: result.user.photoURL,
+              role: 'client',
+              points: 0,
+              favorites: [],
+              referralCode: generateReferralCode(result.user.displayName || 'USER'),
+              createdAt: new Date().toISOString()
+            });
+          }
+        } catch (err) {
+          setError(err.message);
         }
-        
-        if (mode === 'register') {
-          if (!form.phone) return alert('Veuillez entrer votre numéro de téléphone');
-          if (!form.confirmPassword) return alert('Veuillez confirmer le mot de passe');
-          if (form.password !== form.confirmPassword) return alert('Les mots de passe ne correspondent pas');
-          if (form.password.length < 6) return alert('Le mot de passe doit contenir au moins 6 caractères');
-          onRegister(form);
-        } else {
-          onLogin(form);
+        setLoading(false);
+      };
+
+      // Connexion Email
+      const handleEmailSignIn = async () => {
+        if (!form.email || !form.password) {
+          setError('Veuillez remplir tous les champs');
+          return;
         }
+
+        setLoading(true);
+        setError('');
+        try {
+          const { signInWithEmailAndPassword } = window.firebaseUtils;
+          await signInWithEmailAndPassword(window.firebaseAuth, form.email, form.password);
+        } catch (err) {
+          setError('Email ou mot de passe incorrect');
+        }
+        setLoading(false);
+      };
+
+      // Inscription Email
+      const handleEmailSignUp = async () => {
+        if (!form.email || !form.password || !form.name || !form.phone) {
+          setError('Veuillez remplir tous les champs');
+          return;
+        }
+
+        if (form.password !== form.confirmPassword) {
+          setError('Les mots de passe ne correspondent pas');
+          return;
+        }
+
+        if (form.password.length < 6) {
+          setError('Le mot de passe doit contenir au moins 6 caractères');
+          return;
+        }
+
+        setLoading(true);
+        setError('');
+        try {
+          const { createUserWithEmailAndPassword, doc, setDoc, getDoc, updateDoc } = window.firebaseUtils;
+          
+          const result = await createUserWithEmailAndPassword(window.firebaseAuth, form.email, form.password);
+          
+          let bonusPoints = 0;
+          let referredBy = null;
+
+          // Vérifier code parrainage
+          if (form.referralCode) {
+            const usersRef = window.firebaseUtils.collection(window.firebaseDb, 'users');
+            const q = window.firebaseUtils.query(usersRef, window.firebaseUtils.where('referralCode', '==', form.referralCode));
+            const querySnapshot = await window.firebaseUtils.getDocs(q);
+            
+            if (!querySnapshot.empty) {
+              const referrerDoc = querySnapshot.docs[0];
+              const referrerId = referrerDoc.id;
+              
+              // Ajouter 100 points au parrain
+              await updateDoc(doc(window.firebaseDb, 'users', referrerId), {
+                points: (referrerDoc.data().points || 0) + 100
+              });
+              
+              bonusPoints = 50; // Bonus filleul
+              referredBy = form.referralCode;
+            }
+          }
+          
+          await setDoc(doc(window.firebaseDb, 'users', result.user.uid), {
+            name: form.name,
+            email: form.email,
+            phone: form.phone,
+            role: 'client',
+            points: bonusPoints,
+            favorites: [],
+            referralCode: generateReferralCode(form.name),
+            referredBy: referredBy,
+            createdAt: new Date().toISOString()
+          });
+
+          if (bonusPoints > 0) {
+            alert(`Bienvenue ${form.name} ! 🎉\nVous avez reçu ${bonusPoints} points de bienvenue grâce au parrainage !`);
+          }
+        } catch (err) {
+          setError(err.code === 'auth/email-already-in-use' ? 'Cet email existe déjà' : err.message);
+        }
+        setLoading(false);
       };
       
       return (
@@ -442,6 +710,36 @@
               <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-orange-400">
                 PUFF JR CASES
               </h1>
+            </div>
+
+            {error && (
+              <div className="bg-red-500/20 border border-red-500/50 text-red-300 p-3 rounded-xl mb-4 text-sm">
+                {error}
+              </div>
+            )}
+
+            {/* Connexion Google */}
+            <button
+              onClick={handleGoogleSignIn}
+              disabled={loading}
+              className="w-full bg-white hover:bg-gray-100 text-gray-800 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-3 border-2 border-gray-300 mb-6 transition disabled:opacity-50"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              Continuer avec Google
+            </button>
+
+            <div className="relative mb-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-pink-500/30"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-4 bg-black/40 text-pink-300">ou</span>
+              </div>
             </div>
             
             <div className="flex gap-2 mb-6">
@@ -462,11 +760,20 @@
             </div>
             
             <div className="space-y-3">
+              {mode === 'register' && (
+                <Input 
+                  type="text" 
+                  placeholder="Nom complet" 
+                  value={form.name} 
+                  onChange={e => setForm({...form, name: e.target.value})} 
+                />
+              )}
+
               <Input 
-                type="text" 
-                placeholder="Identifiant" 
-                value={form.name} 
-                onChange={e => setForm({...form, name: e.target.value})} 
+                type="email" 
+                placeholder="Email" 
+                value={form.email} 
+                onChange={e => setForm({...form, email: e.target.value})} 
               />
               
               {mode === 'register' && (
@@ -504,8 +811,12 @@
                 </>
               )}
               
-              <Button onClick={handleSubmit} className="w-full">
-                {mode === 'login' ? 'SE CONNECTER' : 'CRÉER COMPTE'}
+              <Button 
+                onClick={mode === 'login' ? handleEmailSignIn : handleEmailSignUp} 
+                className="w-full"
+                disabled={loading}
+              >
+                {loading ? 'Chargement...' : mode === 'login' ? 'SE CONNECTER' : 'CRÉER COMPTE'}
               </Button>
             </div>
             
@@ -680,7 +991,6 @@
     };
 
 // ==================== FIN PARTIE 3/6 ====================
-// COPIEZ LA PARTIE 4/6 JUSTE APRÈS CETTE LIGNE
 // ==================== PARTIE 4/6 : VUES CLIENT ====================
 
     // ==================== VUE ACCUEIL (PRODUITS) ====================
@@ -918,7 +1228,8 @@
                         <span className="text-pink-300 w-8 text-center">{i.qty}</span>
                         <button 
                           onClick={() => onUpdateQty(i.id, 1)} 
-                          className="bg-pink-500/20 p-1 rounded hover:bg-pink-500/30"
+                          disabled={i.qty >= i.stock}
+                          className="bg-pink-500/20 p-1 rounded hover:bg-pink-500/30 disabled:opacity-50"
                         >
                           <Icon name="Plus" size={16} className="text-pink-400" />
                         </button>
@@ -996,7 +1307,7 @@
     };
 
     // ==================== VUE COMMANDES ====================
-    const OrdersView = ({ orders }) => {
+    const OrdersView = ({ orders, onShowQR }) => {
       return (
         <Card className="p-6">
           <h2 className="text-3xl font-black text-white mb-6">📦 Mes Commandes</h2>
@@ -1035,7 +1346,7 @@
                     </div>
                   )}
                   
-                  <div className="pt-3 border-t border-pink-500/30">
+                  <div className="pt-3 border-t border-pink-500/30 mb-3">
                     <p className="text-pink-300 text-sm mb-2 font-semibold">Articles:</p>
                     {o.items.map(i => (
                       <p key={i.id} className="text-pink-300 text-sm">
@@ -1043,6 +1354,13 @@
                       </p>
                     ))}
                   </div>
+
+                  {o.status !== 'delivered' && (
+                    <Button onClick={() => onShowQR(o.id)} variant="secondary" className="w-full">
+                      <Icon name="Camera" size={18} />
+                      Afficher QR Code
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
@@ -1052,8 +1370,7 @@
     };
 
 // ==================== FIN PARTIE 4/6 ====================
-// COPIEZ LA PARTIE 5/6 JUSTE APRÈS CETTE LIG
-// ==================== PARTIE 5/6 : VUES PARRAINAGE, PROMO, TUTORIEL & ADMIN ====================
+// ==================== PARTIE 5/6 : PARRAINAGE, PROMO, TUTORIEL & ADMIN ====================
 
     // ==================== VUE PARRAINAGE ====================
     const ReferralView = ({ user, referrals }) => {
@@ -1281,6 +1598,21 @@
                 </div>
               </div>
             </div>
+
+            <div className="bg-white/5 rounded-xl p-6 border border-pink-500/30">
+              <div className="flex items-start gap-4">
+                <div className="bg-gradient-to-r from-pink-500 to-orange-500 w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-white font-black text-xl">6</span>
+                </div>
+                <div>
+                  <h3 className="text-white font-bold text-lg mb-2">📱 QR Code de livraison</h3>
+                  <p className="text-pink-300 text-sm">
+                    Chaque commande génère un QR Code unique. Présentez-le au livreur pour confirmer la réception 
+                    de votre commande.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </Card>
       );
@@ -1395,8 +1727,7 @@
     };
 
 // ==================== FIN PARTIE 5/6 ====================
-// COPIEZ LA PARTIE 6/6 (DERNIÈRE) JUSTE APRÈS CETTE LIGNE
-// ==================== PARTIE 6/6 : APP PRINCIPAL & ADMIN + FIN ====================
+// ==================== PARTIE 6/6 : ADMIN + APP PRINCIPAL + FIREBASE ====================
 
     // ==================== VUE ADMIN PRODUITS ====================
     const AdminProductsView = ({ products, onAddProduct, onEditProduct, onDeleteProduct }) => {
@@ -1458,7 +1789,7 @@
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <div className="flex items-center gap-3 mb-2">
-                        <p className="text-white font-bold text-lg">👤 {o.user}</p>
+                        <p className="text-white font-bold text-lg">👤 {o.userName}</p>
                         {getStatusBadge(o.status)}
                       </div>
                       <p className="text-pink-300 text-sm">📞 {o.phone || 'Non renseigné'}</p>
@@ -1511,122 +1842,104 @@
 
     // ==================== COMPOSANT APP PRINCIPAL ====================
     function App() {
-      // Données initiales
-      const INITIAL_USERS = [{ 
-        name: 'Bradley', 
-        password: 'Brad@mar270508', 
-        role: 'producer', 
-        phone: '', 
-        referralCode: 'PUFFBRA123456',
-        points: 0
-      }];
+      const [firebaseReady, setFirebaseReady] = useState(false);
+      const [currentUser, setCurrentUser] = useState(null);
+      const [userData, setUserData] = useState(null);
+      const [loading, setLoading] = useState(true);
       
-      const INITIAL_PRODUCTS = [
-        { id: 1, name: 'Coque Galaxy', price: 10.00, stock: 10, img: 'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=400', desc: 'Design Puff Jr coloré' },
-        { id: 2, name: 'Coque Neon', price: 10.00, stock: 8, img: 'https://images.unsplash.com/photo-1556656793-08538906a9f8?w=400', desc: 'Style néon vibrant' },
-        { id: 3, name: 'Coque Cosmic', price: 10.00, stock: 15, img: 'https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=400', desc: 'Motifs cosmiques' }
-      ];
-
-      // Fonctions de chargement/sauvegarde
-      const loadFromStorage = (key, defaultValue) => {
-        try {
-          const stored = localStorage.getItem(key);
-          return stored ? JSON.parse(stored) : defaultValue;
-        } catch {
-          return defaultValue;
-        }
-      };
-
-      const saveToStorage = (key, value) => {
-        try {
-          localStorage.setItem(key, JSON.stringify(value));
-        } catch (e) {
-          console.error('Erreur sauvegarde:', e);
-        }
-      };
-
-      // États
+      // États de l'application
       const [view, setView] = useState('home');
-      const [user, setUser] = useState(loadFromStorage('puff_current_user', null));
       const [search, setSearch] = useState('');
       const [cart, setCart] = useState([]);
-      const [users, setUsers] = useState(loadFromStorage('puff_users', INITIAL_USERS));
-      const [products, setProducts] = useState(loadFromStorage('puff_products', INITIAL_PRODUCTS));
-      const [orders, setOrders] = useState(loadFromStorage('puff_orders', []));
+      const [products, setProducts] = useState([]);
+      const [orders, setOrders] = useState([]);
       const [checkoutForm, setCheckoutForm] = useState({ address: '', payment: '', promoCode: '' });
       const [selectedProduct, setSelectedProduct] = useState(null);
       const [showSurvey, setShowSurvey] = useState(false);
       const [showScanner, setShowScanner] = useState(false);
-      const [favorites, setFavorites] = useState(loadFromStorage('puff_favorites_' + user?.name, []));
-      const [userFlavors, setUserFlavors] = useState(loadFromStorage('puff_user_flavors_' + user?.name, []));
-      const [allFlavors, setAllFlavors] = useState(loadFromStorage('puff_all_flavors', INITIAL_FLAVORS));
-      const [surveyResults, setSurveyResults] = useState(loadFromStorage('puff_survey_results', {}));
+      const [showQRCode, setShowQRCode] = useState(null);
+      const [favorites, setFavorites] = useState([]);
+      const [userFlavors, setUserFlavors] = useState([]);
+      const [allFlavors, setAllFlavors] = useState(INITIAL_FLAVORS);
+      const [surveyResults, setSurveyResults] = useState({});
 
-      // Effets de sauvegarde
-      useEffect(() => { saveToStorage('puff_users', users); }, [users]);
-      useEffect(() => { saveToStorage('puff_current_user', user); }, [user]);
-      useEffect(() => { saveToStorage('puff_products', products); }, [products]);
-      useEffect(() => { saveToStorage('puff_orders', orders); }, [orders]);
-      useEffect(() => { if (user) saveToStorage('puff_favorites_' + user.name, favorites); }, [favorites, user]);
-      useEffect(() => { if (user) saveToStorage('puff_user_flavors_' + user.name, userFlavors); }, [userFlavors, user]);
-      useEffect(() => { saveToStorage('puff_all_flavors', allFlavors); }, [allFlavors]);
-      useEffect(() => { saveToStorage('puff_survey_results', surveyResults); }, [surveyResults]);
+      // Initialisation Firebase
+      useEffect(() => {
+        waitForFirebase().then(() => {
+          setFirebaseReady(true);
+
+          const { onAuthStateChanged } = window.firebaseUtils;
+          const unsubscribe = onAuthStateChanged(window.firebaseAuth, async (user) => {
+            if (user) {
+              const { doc, getDoc } = window.firebaseUtils;
+              const userDoc = await getDoc(doc(window.firebaseDb, 'users', user.uid));
+              
+              if (userDoc.exists()) {
+                const data = { uid: user.uid, ...userDoc.data() };
+                setUserData(data);
+                setFavorites(data.favorites || []);
+                setUserFlavors(data.flavors || []);
+              }
+              setCurrentUser(user);
+            } else {
+              setCurrentUser(null);
+              setUserData(null);
+            }
+            setLoading(false);
+          });
+
+          return () => unsubscribe();
+        });
+      }, []);
+
+      // Écouter les produits en temps réel
+      useEffect(() => {
+        if (!firebaseReady || !currentUser) return;
+
+        const { collection, onSnapshot } = window.firebaseUtils;
+        const unsubscribe = onSnapshot(collection(window.firebaseDb, 'products'), (snapshot) => {
+          const prods = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setProducts(prods);
+        });
+
+        return () => unsubscribe();
+      }, [firebaseReady, currentUser]);
+
+      // Écouter les commandes en temps réel
+      useEffect(() => {
+        if (!firebaseReady || !currentUser || !userData) return;
+
+        const { collection, query, where, onSnapshot } = window.firebaseUtils;
+        const ordersRef = collection(window.firebaseDb, 'orders');
+        
+        const q = userData.role === 'producer' 
+          ? ordersRef 
+          : query(ordersRef, where('userId', '==', currentUser.uid));
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          const ords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setOrders(ords);
+        });
+
+        return () => unsubscribe();
+      }, [firebaseReady, currentUser, userData]);
 
       // Calculs mémorisés
       const cartTotal = useMemo(() => cart.reduce((s, i) => s + i.price * i.qty, 0), [cart]);
       const cartItemCount = useMemo(() => cart.reduce((s, i) => s + i.qty, 0), [cart]);
-      const myOrders = useMemo(() => orders.filter(o => o.user === user?.name), [orders, user]);
-      const myReferrals = useMemo(() => users.filter(u => u.referredBy === user?.referralCode), [users, user]);
+      const myOrders = useMemo(() => orders.filter(o => o.userId === currentUser?.uid), [orders, currentUser]);
+      const myReferrals = useMemo(() => {
+        // À implémenter: récupérer les filleuls depuis Firestore
+        return [];
+      }, [userData]);
 
       // Handlers
-      const handleLogin = useCallback((form) => {
-        const u = users.find(u => u.name === form.name && u.password === form.password);
-        if (u) {
-          setUser(u);
-          setFavorites(loadFromStorage('puff_favorites_' + u.name, []));
-          setUserFlavors(loadFromStorage('puff_user_flavors_' + u.name, []));
-        } else {
-          alert('Identifiant ou mot de passe incorrect');
-        }
-      }, [users]);
-
-      const handleRegister = useCallback((form) => {
-        if (users.find(u => u.name === form.name)) return alert('Ce nom d\'utilisateur existe déjà');
-        
-        const newUser = {
-          name: form.name,
-          password: form.password,
-          phone: form.phone,
-          role: 'client',
-          referralCode: generateReferralCode(form.name),
-          referredBy: form.referralCode || null,
-          points: 0
-        };
-
-        // Bonus parrainage
-        if (form.referralCode) {
-          const referrer = users.find(u => u.referralCode === form.referralCode);
-          if (referrer) {
-            newUser.points = 50; // Bonus filleul
-            setUsers(prev => prev.map(u => 
-              u.referralCode === form.referralCode 
-                ? {...u, points: (u.points || 0) + 100} 
-                : u
-            ));
-          }
-        }
-
-        setUsers(prev => [...prev, newUser]);
-        setUser(newUser);
-        alert(`Bienvenue ${form.name} ! 🎉${newUser.points > 0 ? ` Vous avez reçu ${newUser.points} points de bienvenue !` : ''}`);
-      }, [users]);
-
-      const handleLogout = useCallback(() => {
-        setUser(null);
+      const handleLogout = async () => {
+        const { signOut } = window.firebaseUtils;
+        await signOut(window.firebaseAuth);
         setCart([]);
         setView('home');
-        setFavorites([]);
-      }, []);
+      };
 
       const addToCart = useCallback((p) => {
         if (p.stock <= 0) return alert('Produit en rupture de stock');
@@ -1658,76 +1971,88 @@
         }));
       }, [products]);
 
-      const handleCheckout = useCallback(() => {
+      const handleCheckout = async () => {
         if (!checkoutForm.address || !checkoutForm.payment) {
           return alert('Veuillez remplir tous les champs');
         }
 
         const pointsEarned = Math.floor(cartTotal * 10);
-        const userInfo = users.find(u => u.name === user.name);
 
-        const newOrder = {
-          id: Date.now(),
-          user: user.name,
-          phone: userInfo?.phone || '',
-          items: [...cart],
-          total: cartTotal,
-          address: checkoutForm.address,
-          payment: checkoutForm.payment,
-          date: new Date().toLocaleString('fr-FR'),
-          status: 'pending',
-          deliveryDate: null,
-          deliveryTime: null,
-          pointsEarned
-        };
+        try {
+          const { addDoc, collection, doc, updateDoc, getDoc } = window.firebaseUtils;
 
-        // Mettre à jour stock
-        setProducts(prev => prev.map(p => {
-          const cartItem = cart.find(c => c.id === p.id);
-          return cartItem ? {...p, stock: p.stock - cartItem.qty} : p;
-        }));
+          const newOrder = {
+            userId: currentUser.uid,
+            userName: userData.name,
+            phone: userData.phone || '',
+            items: cart,
+            total: cartTotal,
+            address: checkoutForm.address,
+            payment: checkoutForm.payment,
+            date: new Date().toLocaleString('fr-FR'),
+            status: 'pending',
+            deliveryDate: null,
+            deliveryTime: null,
+            pointsEarned,
+            createdAt: new Date().toISOString()
+          };
 
-        // Ajouter points au client
-        setUsers(prev => prev.map(u => 
-          u.name === user.name 
-            ? {...u, points: (u.points || 0) + pointsEarned}
-            : u
-        ));
+          await addDoc(collection(window.firebaseDb, 'orders'), newOrder);
 
-        // Mettre à jour l'utilisateur courant
-        setUser(prev => ({...prev, points: (prev.points || 0) + pointsEarned}));
+          // Mettre à jour stock produits
+          for (const item of cart) {
+            const prodRef = doc(window.firebaseDb, 'products', item.id);
+            const prodSnap = await getDoc(prodRef);
+            if (prodSnap.exists()) {
+              await updateDoc(prodRef, {
+                stock: prodSnap.data().stock - item.qty
+              });
+            }
+          }
 
-        setOrders(prev => [...prev, newOrder]);
-        setCart([]);
-        setCheckoutForm({ address: '', payment: '', promoCode: '' });
-        alert(`Commande confirmée ! 🎉\nVous avez gagné ${pointsEarned} points !`);
-        setView('orders');
-      }, [checkoutForm, cart, cartTotal, user, users]);
+          // Ajouter points au client
+          const userRef = doc(window.firebaseDb, 'users', currentUser.uid);
+          await updateDoc(userRef, {
+            points: (userData.points || 0) + pointsEarned
+          });
 
-      const confirmOrder = useCallback((order) => {
+          setCart([]);
+          setCheckoutForm({ address: '', payment: '', promoCode: '' });
+          alert(`Commande confirmée ! 🎉\nVous avez gagné ${pointsEarned} points !`);
+          setView('orders');
+        } catch (err) {
+          alert('Erreur lors de la commande: ' + err.message);
+        }
+      };
+
+      const confirmOrder = async (order) => {
         const deliveryDate = prompt('Date de livraison (ex: 15/12/2024):');
         if (!deliveryDate) return;
 
         const deliveryTime = prompt('Heure de livraison (ex: 14h30):');
         if (!deliveryTime) return;
 
-        setOrders(prev => prev.map(o =>
-          o.id === order.id
-            ? {...o, status: 'confirmed', deliveryDate, deliveryTime}
-            : o
-        ));
+        try {
+          const { doc, updateDoc } = window.firebaseUtils;
+          await updateDoc(doc(window.firebaseDb, 'orders', order.id), {
+            status: 'confirmed',
+            deliveryDate,
+            deliveryTime
+          });
+          alert('Commande confirmée avec succès !');
+        } catch (err) {
+          alert('Erreur: ' + err.message);
+        }
+      };
 
-        alert('Commande confirmée avec succès !');
-      }, []);
-
-      const handleScannerValidate = useCallback((orderCode) => {
+      const handleScannerValidate = async (orderCode) => {
         const orderIdMatch = orderCode.match(/\d+/);
         if (!orderIdMatch) {
           alert('Code invalide');
           return;
         }
 
-        const orderId = parseInt(orderIdMatch[0]);
+        const orderId = orderIdMatch[0];
         const order = orders.find(o => o.id === orderId);
 
         if (!order) {
@@ -1735,47 +2060,61 @@
           return;
         }
 
-        setOrders(prev => prev.map(o =>
-          o.id === orderId ? {...o, status: 'delivered'} : o
-        ));
+        try {
+          const { doc, updateDoc } = window.firebaseUtils;
+          await updateDoc(doc(window.firebaseDb, 'orders', order.id), {
+            status: 'delivered'
+          });
+          alert('✅ Commande marquée comme livrée !');
+        } catch (err) {
+          alert('Erreur: ' + err.message);
+        }
+      };
 
-        alert('✅ Commande marquée comme livrée !');
-      }, [orders]);
+      const toggleFavorite = async (productId) => {
+        const newFavorites = favorites.includes(productId)
+          ? favorites.filter(id => id !== productId)
+          : [...favorites, productId];
+        
+        setFavorites(newFavorites);
 
-      const toggleFavorite = useCallback((productId) => {
-        setFavorites(prev =>
-          prev.includes(productId)
-            ? prev.filter(id => id !== productId)
-            : [...prev, productId]
-        );
-      }, []);
+        try {
+          const { doc, updateDoc } = window.firebaseUtils;
+          await updateDoc(doc(window.firebaseDb, 'users', currentUser.uid), {
+            favorites: newFavorites
+          });
+        } catch (err) {
+          console.error('Erreur favoris:', err);
+        }
+      };
 
-      const handleSurveySubmit = useCallback((selectedFlavors) => {
+      const handleSurveySubmit = async (selectedFlavors) => {
         setUserFlavors(selectedFlavors);
 
-        // Ajouter nouveaux goûts à la liste globale
-        const newFlavors = selectedFlavors.filter(f => !allFlavors.includes(f));
-        if (newFlavors.length > 0) {
-          setAllFlavors(prev => [...prev, ...newFlavors]);
-        }
-
-        // Mettre à jour résultats sondage
-        setSurveyResults(prev => {
-          const updated = {...prev};
-          selectedFlavors.forEach(flavor => {
-            updated[flavor] = (updated[flavor] || 0) + 1;
+        try {
+          const { doc, updateDoc } = window.firebaseUtils;
+          await updateDoc(doc(window.firebaseDb, 'users', currentUser.uid), {
+            flavors: selectedFlavors
           });
-          return updated;
-        });
 
-        alert('Merci pour votre participation ! 🎉');
-      }, [allFlavors]);
+          // Mettre à jour sondage global
+          const newResults = {...surveyResults};
+          selectedFlavors.forEach(flavor => {
+            newResults[flavor] = (newResults[flavor] || 0) + 1;
+          });
+          setSurveyResults(newResults);
 
-      const addProduct = useCallback(() => {
+          alert('Merci pour votre participation ! 🎉');
+        } catch (err) {
+          console.error('Erreur sondage:', err);
+        }
+      };
+
+      const addProduct = async () => {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
-        input.onchange = (e) => {
+        input.onchange = async (e) => {
           const f = e.target.files?.[0];
           if (!f) return;
 
@@ -1791,24 +2130,32 @@
           const desc = prompt('Description');
           if (!desc) return;
 
-          const r = new FileReader();
-          r.onload = (ev) => {
-            setProducts(prev => [...prev, {
-              id: Date.now(),
+          try {
+            const { storageRef, uploadBytes, getDownloadURL } = window.firebaseUtils;
+            const { addDoc, collection } = window.firebaseUtils;
+
+            const imgRef = storageRef(window.firebaseStorage, `products/${Date.now()}_${f.name}`);
+            await uploadBytes(imgRef, f);
+            const imgUrl = await getDownloadURL(imgRef);
+
+            await addDoc(collection(window.firebaseDb, 'products'), {
               name,
               price,
               stock,
-              img: ev.target.result,
-              desc
-            }]);
+              img: imgUrl,
+              desc,
+              createdAt: new Date().toISOString()
+            });
+
             alert('Produit ajouté !');
-          };
-          r.readAsDataURL(f);
+          } catch (err) {
+            alert('Erreur: ' + err.message);
+          }
         };
         input.click();
-      }, []);
+      };
 
-      const editProduct = useCallback((p) => {
+      const editProduct = async (p) => {
         const name = prompt('Nouveau nom', p.name);
         if (!name) return;
 
@@ -1821,42 +2168,71 @@
         const desc = prompt('Description', p.desc);
         if (!desc) return;
 
-        setProducts(prev => prev.map(pr =>
-          pr.id === p.id ? {...pr, name, price, stock, desc} : pr
-        ));
-        alert('Produit modifié !');
-      }, []);
+        try {
+          const { doc, updateDoc } = window.firebaseUtils;
+          await updateDoc(doc(window.firebaseDb, 'products', p.id), {
+            name,
+            price,
+            stock,
+            desc
+          });
+          alert('Produit modifié !');
+        } catch (err) {
+          alert('Erreur: ' + err.message);
+        }
+      };
 
-      const deleteProduct = useCallback((id) => {
+      const deleteProduct = async (id) => {
         if (window.confirm('Supprimer ce produit ?')) {
-          setProducts(prev => prev.filter(p => p.id !== id));
-          alert('Produit supprimé !');
+          try {
+            const { doc, deleteDoc } = window.firebaseUtils;
+            await deleteDoc(doc(window.firebaseDb, 'products', id));
+            alert('Produit supprimé !');
+          } catch (err) {
+            alert('Erreur: ' + err.message);
+          }
         }
-      }, []);
+      };
 
-      const deleteOrder = useCallback((id) => {
+      const deleteOrder = async (id) => {
         if (window.confirm('Supprimer cette commande ?')) {
-          setOrders(prev => prev.filter(o => o.id !== id));
-          alert('Commande supprimée !');
+          try {
+            const { doc, deleteDoc } = window.firebaseUtils;
+            await deleteDoc(doc(window.firebaseDb, 'orders', id));
+            alert('Commande supprimée !');
+          } catch (err) {
+            alert('Erreur: ' + err.message);
+          }
         }
-      }, []);
+      };
 
       // Rendu
-      if (!user) return <LoginView onLogin={handleLogin} onRegister={handleRegister} />;
+      if (!firebaseReady || loading) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-orange-700 flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-pink-500 mx-auto mb-4"></div>
+              <p className="text-pink-300 text-lg">Chargement de Firebase...</p>
+            </div>
+          </div>
+        );
+      }
+
+      if (!currentUser) return <LoginView />;
 
       return (
         <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-orange-700">
           <Navigation
-            user={user}
+            user={userData}
             cartCount={cartItemCount}
             onNavigate={setView}
             onLogout={handleLogout}
-            points={user.points || 0}
+            points={userData?.points || 0}
           />
 
           <div className="max-w-7xl mx-auto p-6">
-            {user.role === 'client' && view === 'home' && (
-              <LoyaltyDisplay points={user.points || 0} />
+            {userData?.role === 'client' && view === 'home' && (
+              <LoyaltyDisplay points={userData.points || 0} />
             )}
 
             {view === 'home' && (
@@ -1869,12 +2245,12 @@
                 favorites={favorites}
                 onToggleFavorite={toggleFavorite}
                 onOpenSurvey={() => setShowSurvey(true)}
-                userRole={user.role}
+                userRole={userData?.role}
                 userFlavors={userFlavors}
               />
             )}
 
-            {view === 'favorites' && user.role === 'client' && (
+            {view === 'favorites' && userData?.role === 'client' && (
               <FavoritesView
                 products={products}
                 favorites={favorites}
@@ -1884,7 +2260,7 @@
               />
             )}
 
-            {view === 'cart' && user.role === 'client' && (
+            {view === 'cart' && userData?.role === 'client' && (
               <CartView
                 cart={cart}
                 onUpdateQty={updateCartQty}
@@ -1895,27 +2271,27 @@
               />
             )}
 
-            {view === 'orders' && user.role === 'client' && (
-              <OrdersView orders={myOrders} />
+            {view === 'orders' && userData?.role === 'client' && (
+              <OrdersView orders={myOrders} onShowQR={setShowQRCode} />
             )}
 
-            {view === 'referral' && user.role === 'client' && (
-              <ReferralView user={user} referrals={myReferrals} />
+            {view === 'referral' && userData?.role === 'client' && (
+              <ReferralView user={userData} referrals={myReferrals} />
             )}
 
-            {view === 'promo' && user.role === 'client' && (
+            {view === 'promo' && userData?.role === 'client' && (
               <PromoView promoCodes={[]} />
             )}
 
-            {view === 'tutorial' && user.role === 'client' && (
+            {view === 'tutorial' && userData?.role === 'client' && (
               <TutorialView />
             )}
 
-            {view === 'stats' && user.role === 'producer' && (
+            {view === 'stats' && userData?.role === 'producer' && (
               <StatsView orders={orders} surveyResults={surveyResults} />
             )}
 
-            {view === 'admin' && user.role === 'producer' && (
+            {view === 'admin' && userData?.role === 'producer' && (
               <div className="space-y-6">
                 <AdminProductsView
                   products={products}
@@ -1931,7 +2307,7 @@
               </div>
             )}
 
-            {view === 'scanner' && user.role === 'producer' && (
+            {view === 'scanner' && userData?.role === 'producer' && (
               <Card className="p-12 text-center">
                 <Icon name="Camera" size={64} className="mx-auto text-pink-400 mb-4" />
                 <h2 className="text-2xl font-black text-white mb-4">Scanner QR Code</h2>
@@ -1947,9 +2323,9 @@
             <Modal
               product={selectedProduct}
               onClose={() => setSelectedProduct(null)}
-              onAddToCart={user.role === 'client' ? addToCart : null}
+              onAddToCart={userData?.role === 'client' ? addToCart : null}
               isFavorite={favorites.includes(selectedProduct.id)}
-              onToggleFavorite={user.role === 'client' ? toggleFavorite : null}
+              onToggleFavorite={userData?.role === 'client' ? toggleFavorite : null}
             />
           )}
 
@@ -1968,6 +2344,13 @@
               onValidate={handleScannerValidate}
             />
           )}
+
+          {showQRCode && (
+            <QRCodeDisplayModal
+              orderId={showQRCode}
+              onClose={() => setShowQRCode(null)}
+            />
+          )}
         </div>
       );
     }
@@ -1979,5 +2362,4 @@
 </html>
 
 // ==================== FIN COMPLÈTE DU CODE ====================
-// Votre application P-Shop est maintenant complète !
-// Copiez les 6 parties dans l'ordre pour avoir le code complet.
+// Votre application P-Shop avec Firebase est maintenant 100% complète !
