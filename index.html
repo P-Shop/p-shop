@@ -1545,19 +1545,19 @@
         { id: 3, name: 'Coque Cosmic', price: 10.00, stock: 15, img: 'https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=400', desc: 'Motifs cosmiques' }
       ];
 
-      // Fonctions de chargement/sauvegarde
-      const loadFromStorage = (key, defaultValue) => {
+      // Fonctions de chargement/sauvegarde avec stockage cloud
+      const loadFromStorage = async (key, defaultValue) => {
         try {
-          const stored = localStorage.getItem(key);
-          return stored ? JSON.parse(stored) : defaultValue;
+          const result = await window.storage.get(key, true); // shared=true pour partager entre tous
+          return result ? JSON.parse(result.value) : defaultValue;
         } catch {
           return defaultValue;
         }
       };
 
-      const saveToStorage = (key, value) => {
+      const saveToStorage = async (key, value) => {
         try {
-          localStorage.setItem(key, JSON.stringify(value));
+          await window.storage.set(key, JSON.stringify(value), true); // shared=true pour partager entre tous
         } catch (e) {
           console.error('Erreur sauvegarde:', e);
         }
@@ -1565,30 +1565,65 @@
 
       // États
       const [view, setView] = useState('home');
-      const [user, setUser] = useState(loadFromStorage('puff_current_user', null));
+      const [user, setUser] = useState(null);
       const [search, setSearch] = useState('');
       const [cart, setCart] = useState([]);
-      const [users, setUsers] = useState(loadFromStorage('puff_users', INITIAL_USERS));
-      const [products, setProducts] = useState(loadFromStorage('puff_products', INITIAL_PRODUCTS));
-      const [orders, setOrders] = useState(loadFromStorage('puff_orders', []));
+      const [users, setUsers] = useState(INITIAL_USERS);
+      const [products, setProducts] = useState(INITIAL_PRODUCTS);
+      const [orders, setOrders] = useState([]);
       const [checkoutForm, setCheckoutForm] = useState({ address: '', payment: '', promoCode: '' });
       const [selectedProduct, setSelectedProduct] = useState(null);
       const [showSurvey, setShowSurvey] = useState(false);
       const [showScanner, setShowScanner] = useState(false);
-      const [favorites, setFavorites] = useState(loadFromStorage('puff_favorites_' + user?.name, []));
-      const [userFlavors, setUserFlavors] = useState(loadFromStorage('puff_user_flavors_' + user?.name, []));
-      const [allFlavors, setAllFlavors] = useState(loadFromStorage('puff_all_flavors', INITIAL_FLAVORS));
-      const [surveyResults, setSurveyResults] = useState(loadFromStorage('puff_survey_results', {}));
+      const [favorites, setFavorites] = useState([]);
+      const [userFlavors, setUserFlavors] = useState([]);
+      const [allFlavors, setAllFlavors] = useState(INITIAL_FLAVORS);
+      const [surveyResults, setSurveyResults] = useState({});
+      const [loading, setLoading] = useState(true);
 
-      // Effets de sauvegarde
-      useEffect(() => { saveToStorage('puff_users', users); }, [users]);
-      useEffect(() => { saveToStorage('puff_current_user', user); }, [user]);
-      useEffect(() => { saveToStorage('puff_products', products); }, [products]);
-      useEffect(() => { saveToStorage('puff_orders', orders); }, [orders]);
-      useEffect(() => { if (user) saveToStorage('puff_favorites_' + user.name, favorites); }, [favorites, user]);
-      useEffect(() => { if (user) saveToStorage('puff_user_flavors_' + user.name, userFlavors); }, [userFlavors, user]);
-      useEffect(() => { saveToStorage('puff_all_flavors', allFlavors); }, [allFlavors]);
-      useEffect(() => { saveToStorage('puff_survey_results', surveyResults); }, [surveyResults]);
+      // Chargement initial des données
+      useEffect(() => {
+        const loadData = async () => {
+          setLoading(true);
+          try {
+            const loadedUsers = await loadFromStorage('puff_users', INITIAL_USERS);
+            const loadedProducts = await loadFromStorage('puff_products', INITIAL_PRODUCTS);
+            const loadedOrders = await loadFromStorage('puff_orders', []);
+            const loadedFlavors = await loadFromStorage('puff_all_flavors', INITIAL_FLAVORS);
+            const loadedSurvey = await loadFromStorage('puff_survey_results', {});
+            const currentUser = await loadFromStorage('puff_current_user', null);
+
+            setUsers(loadedUsers);
+            setProducts(loadedProducts);
+            setOrders(loadedOrders);
+            setAllFlavors(loadedFlavors);
+            setSurveyResults(loadedSurvey);
+            
+            if (currentUser) {
+              setUser(currentUser);
+              const userFavs = await loadFromStorage('puff_favorites_' + currentUser.name, []);
+              const userFlav = await loadFromStorage('puff_user_flavors_' + currentUser.name, []);
+              setFavorites(userFavs);
+              setUserFlavors(userFlav);
+            }
+          } catch (error) {
+            console.error('Erreur chargement:', error);
+          } finally {
+            setLoading(false);
+          }
+        };
+        loadData();
+      }, []);
+
+      // Effets de sauvegarde automatique
+      useEffect(() => { if (!loading) saveToStorage('puff_users', users); }, [users, loading]);
+      useEffect(() => { if (!loading) saveToStorage('puff_current_user', user); }, [user, loading]);
+      useEffect(() => { if (!loading) saveToStorage('puff_products', products); }, [products, loading]);
+      useEffect(() => { if (!loading) saveToStorage('puff_orders', orders); }, [orders, loading]);
+      useEffect(() => { if (user && !loading) saveToStorage('puff_favorites_' + user.name, favorites); }, [favorites, user, loading]);
+      useEffect(() => { if (user && !loading) saveToStorage('puff_user_flavors_' + user.name, userFlavors); }, [userFlavors, user, loading]);
+      useEffect(() => { if (!loading) saveToStorage('puff_all_flavors', allFlavors); }, [allFlavors, loading]);
+      useEffect(() => { if (!loading) saveToStorage('puff_survey_results', surveyResults); }, [surveyResults, loading]);
 
       // Calculs mémorisés
       const cartTotal = useMemo(() => cart.reduce((s, i) => s + i.price * i.qty, 0), [cart]);
@@ -1597,12 +1632,14 @@
       const myReferrals = useMemo(() => users.filter(u => u.referredBy === user?.referralCode), [users, user]);
 
       // Handlers
-      const handleLogin = useCallback((form) => {
+      const handleLogin = useCallback(async (form) => {
         const u = users.find(u => u.name === form.name && u.password === form.password);
         if (u) {
           setUser(u);
-          setFavorites(loadFromStorage('puff_favorites_' + u.name, []));
-          setUserFlavors(loadFromStorage('puff_user_flavors_' + u.name, []));
+          const userFavs = await loadFromStorage('puff_favorites_' + u.name, []);
+          const userFlav = await loadFromStorage('puff_user_flavors_' + u.name, []);
+          setFavorites(userFavs);
+          setUserFlavors(userFlav);
         } else {
           alert('Identifiant ou mot de passe incorrect');
         }
@@ -1860,6 +1897,23 @@
       }, []);
 
       // Rendu
+      if (loading) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-orange-700 flex items-center justify-center">
+            <Card className="p-12 text-center">
+              <div className="w-32 h-32 mx-auto mb-4">
+                <img 
+                  src="https://i.postimg.cc/ZRscyVKS/b4beb632-78c8-4f8d-8491-02da1b2545ee.png" 
+                  alt="P-Shop Logo" 
+                  className="w-full h-full object-contain drop-shadow-2xl animate-pulse"
+                />
+              </div>
+              <p className="text-pink-300 text-lg">Chargement...</p>
+            </Card>
+          </div>
+        );
+      }
+
       if (!user) return <LoginView onLogin={handleLogin} onRegister={handleRegister} />;
 
       return (
