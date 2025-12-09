@@ -1613,25 +1613,25 @@ const HomeView = ({
 // ==================== PARTIE 6/6 : APP PRINCIPAL & ADMIN + FIN ====================
 
     // ==================== VUE ADMIN PRODUITS ====================
-    const AdminProductsView = ({ products, onAddProduct, onEditProduct, onDeleteProduct }) => {
-      return (
-        <Card className="p-6">
-          <h2 className="text-3xl font-black text-white mb-6">📦 Gestion des Produits</h2>
-          
-          <Button onClick={onAddProduct} className="mb-6">
-            <Icon name="Upload" size={20} />
-            AJOUTER UN PRODUIT
-          </Button>
-          
-          <div className="space-y-3">
-            {products.map(p => (
-              <div key={p.id} className="bg-white/5 p-4 rounded-xl flex justify-between items-center border border-pink-500/20">
-                <div className="flex items-center gap-3">
-                  <img src={p.img} alt={p.name} className="w-16 h-16 rounded-lg object-cover" />
-                  <div>
-                    <p className="text-white font-bold">{p.name}</p>
-                    <p className="text-pink-300 text-sm">{p.price.toFixed(2)}€ - Stock: {p.stock}</p>
-                  </div>
+const AdminProductsView = ({ products, onAddProduct, onEditProduct, onDeleteProduct }) => {
+  return (
+    <Card className="p-6">
+      <h2 className="text-3xl font-black text-white mb-6">📦 Gestion des Produits</h2>
+      
+      <Button onClick={onAddProduct} className="mb-6">
+        <Icon name="Upload" size={20} />
+        AJOUTER UN PRODUIT
+      </Button>
+      
+      <div className="space-y-3">
+        {products.map(p => (
+          <div key={p.id} className="bg-white/5 p-4 rounded-xl flex justify-between items-center border border-pink-500/20">
+            <div className="flex items-center gap-3">
+              <img src={p.img} alt={p.name} className="w-16 h-16 rounded-lg object-cover" />
+              <div>
+                <p className="text-white font-bold">{p.name}</p>
+                <p className="text-pink-300 text-sm">{p.price.toFixed(2)}€ - Stock: {p.stock}</p>
+              </div>
                 </div>
                 <div className="flex gap-2">
                   <button 
