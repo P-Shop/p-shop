@@ -1,0 +1,18 @@
+{
+  "name": "P-Shop - Coques Premium",
+  "short_name": "P-Shop",
+  "description": "Votre boutique de coques téléphone premium",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#581c87",
+  "theme_color": "#ec4899",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://i.postimg.cc/ZRscyVKS/b4beb632-78c8-4f8d-8491-02da1b2545ee.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
