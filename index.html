@@ -9,13 +9,11 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- Firebase SDK -->
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-    import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-    import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-    import { getStorage } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
-
+  <!-- Firebase SDK v9 Compat (plus simple à utiliser) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  
+  <script>
     // Configuration Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyAsgQfVmNvzNpu9L8LkefHR5IBI_QiwAV4",
@@ -26,23 +24,19 @@
       appId: "1:996187114750:web:79d30a82bc47f502a169af"
     };
 
-    // Initialisation Firebase
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-    const storage = getStorage(app);
-
-    // Rendre Firebase disponible globalement
-    window.firebaseApp = app;
-    window.firebaseAuth = auth;
-    window.firebaseDb = db;
-    window.firebaseStorage = storage;
+    // Initialiser Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    
+    // Rendre disponible globalement
+    window.firestoreDb = db;
   </script>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useMemo, useCallback, useEffect } = React;
+    const db = window.firestoreDb;
 
     // ==================== CONFIGURATION ====================
     const INITIAL_FLAVORS = [
@@ -64,6 +58,31 @@
       secondary: "bg-pink-500/20 hover:bg-pink-500/30 text-pink-400",
       input: "w-full bg-white/10 border border-pink-500/30 rounded-xl p-3 text-white placeholder-pink-300/50",
       card: "bg-black/40 backdrop-blur-xl rounded-2xl border-2 border-pink-500/50 overflow-hidden shadow-2xl"
+    };
+
+    // ==================== HELPERS FIREBASE ====================
+    const saveToFirestore = async (collection, data) => {
+      try {
+        await db.collection(collection).doc('data').set({ value: data });
+        console.log(`✅ Sauvegarde ${collection} réussie`);
+      } catch (error) {
+        console.error(`❌ Erreur sauvegarde ${collection}:`, error);
+      }
+    };
+
+    const loadFromFirestore = async (collection, defaultValue) => {
+      try {
+        const doc = await db.collection(collection).doc('data').get();
+        if (doc.exists) {
+          console.log(`✅ Chargement ${collection} réussi`);
+          return doc.data().value;
+        }
+        console.log(`⚠️ ${collection} n'existe pas, utilisation valeur par défaut`);
+        return defaultValue;
+      } catch (error) {
+        console.error(`❌ Erreur chargement ${collection}:`, error);
+        return defaultValue;
+      }
     };
 
     // ==================== COMPOSANTS ICÔNES ====================
@@ -1575,24 +1594,6 @@
         { id: 3, name: 'Coque Cosmic', price: 10.00, stock: 15, img: 'https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=400', desc: 'Motifs cosmiques' }
       ];
 
-      // Fonctions de chargement/sauvegarde avec stockage cloud
-      const loadFromStorage = async (key, defaultValue) => {
-        try {
-          const result = await window.storage.get(key, true); // shared=true pour partager entre tous
-          return result ? JSON.parse(result.value) : defaultValue;
-        } catch {
-          return defaultValue;
-        }
-      };
-
-      const saveToStorage = async (key, value) => {
-        try {
-          await window.storage.set(key, JSON.stringify(value), true); // shared=true pour partager entre tous
-        } catch (e) {
-          console.error('Erreur sauvegarde:', e);
-        }
-      };
-
       // États
       const [view, setView] = useState('home');
       const [user, setUser] = useState(null);
@@ -1611,17 +1612,19 @@
       const [surveyResults, setSurveyResults] = useState({});
       const [loading, setLoading] = useState(true);
 
-      // Chargement initial des données
+      // Chargement initial des données depuis Firebase
       useEffect(() => {
         const loadData = async () => {
           setLoading(true);
           try {
-            const loadedUsers = await loadFromStorage('puff_users', INITIAL_USERS);
-            const loadedProducts = await loadFromStorage('puff_products', INITIAL_PRODUCTS);
-            const loadedOrders = await loadFromStorage('puff_orders', []);
-            const loadedFlavors = await loadFromStorage('puff_all_flavors', INITIAL_FLAVORS);
-            const loadedSurvey = await loadFromStorage('puff_survey_results', {});
-            const currentUser = await loadFromStorage('puff_current_user', null);
+            console.log('🔄 Chargement des données depuis Firebase...');
+            
+            const loadedUsers = await loadFromFirestore('pshop_users', INITIAL_USERS);
+            const loadedProducts = await loadFromFirestore('pshop_products', INITIAL_PRODUCTS);
+            const loadedOrders = await loadFromFirestore('pshop_orders', []);
+            const loadedFlavors = await loadFromFirestore('pshop_all_flavors', INITIAL_FLAVORS);
+            const loadedSurvey = await loadFromFirestore('pshop_survey_results', {});
+            const currentUser = await loadFromFirestore('pshop_current_user', null);
 
             setUsers(loadedUsers);
             setProducts(loadedProducts);
@@ -1631,13 +1634,15 @@
             
             if (currentUser) {
               setUser(currentUser);
-              const userFavs = await loadFromStorage('puff_favorites_' + currentUser.name, []);
-              const userFlav = await loadFromStorage('puff_user_flavors_' + currentUser.name, []);
+              const userFavs = await loadFromFirestore('pshop_favorites_' + currentUser.name, []);
+              const userFlav = await loadFromFirestore('pshop_user_flavors_' + currentUser.name, []);
               setFavorites(userFavs);
               setUserFlavors(userFlav);
             }
+            
+            console.log('✅ Toutes les données chargées');
           } catch (error) {
-            console.error('Erreur chargement:', error);
+            console.error('❌ Erreur chargement:', error);
           } finally {
             setLoading(false);
           }
@@ -1645,15 +1650,54 @@
         loadData();
       }, []);
 
-      // Effets de sauvegarde automatique
-      useEffect(() => { if (!loading) saveToStorage('puff_users', users); }, [users, loading]);
-      useEffect(() => { if (!loading) saveToStorage('puff_current_user', user); }, [user, loading]);
-      useEffect(() => { if (!loading) saveToStorage('puff_products', products); }, [products, loading]);
-      useEffect(() => { if (!loading) saveToStorage('puff_orders', orders); }, [orders, loading]);
-      useEffect(() => { if (user && !loading) saveToStorage('puff_favorites_' + user.name, favorites); }, [favorites, user, loading]);
-      useEffect(() => { if (user && !loading) saveToStorage('puff_user_flavors_' + user.name, userFlavors); }, [userFlavors, user, loading]);
-      useEffect(() => { if (!loading) saveToStorage('puff_all_flavors', allFlavors); }, [allFlavors, loading]);
-      useEffect(() => { if (!loading) saveToStorage('puff_survey_results', surveyResults); }, [surveyResults, loading]);
+      // Sauvegarde automatique dans Firebase à chaque modification
+      useEffect(() => { 
+        if (!loading && users.length > 0) {
+          saveToFirestore('pshop_users', users);
+        }
+      }, [users, loading]);
+      
+      useEffect(() => { 
+        if (!loading) {
+          saveToFirestore('pshop_current_user', user);
+        }
+      }, [user, loading]);
+      
+      useEffect(() => { 
+        if (!loading && products.length > 0) {
+          saveToFirestore('pshop_products', products);
+        }
+      }, [products, loading]);
+      
+      useEffect(() => { 
+        if (!loading) {
+          saveToFirestore('pshop_orders', orders);
+        }
+      }, [orders, loading]);
+      
+      useEffect(() => { 
+        if (user && !loading) {
+          saveToFirestore('pshop_favorites_' + user.name, favorites);
+        }
+      }, [favorites, user, loading]);
+      
+      useEffect(() => { 
+        if (user && !loading) {
+          saveToFirestore('pshop_user_flavors_' + user.name, userFlavors);
+        }
+      }, [userFlavors, user, loading]);
+      
+      useEffect(() => { 
+        if (!loading) {
+          saveToFirestore('pshop_all_flavors', allFlavors);
+        }
+      }, [allFlavors, loading]);
+      
+      useEffect(() => { 
+        if (!loading) {
+          saveToFirestore('pshop_survey_results', surveyResults);
+        }
+      }, [surveyResults, loading]);
 
       // Calculs mémorisés
       const cartTotal = useMemo(() => cart.reduce((s, i) => s + i.price * i.qty, 0), [cart]);
@@ -1666,8 +1710,8 @@
         const u = users.find(u => u.name === form.name && u.password === form.password);
         if (u) {
           setUser(u);
-          const userFavs = await loadFromStorage('puff_favorites_' + u.name, []);
-          const userFlav = await loadFromStorage('puff_user_flavors_' + u.name, []);
+          const userFavs = await loadFromFirestore('pshop_favorites_' + u.name, []);
+          const userFlav = await loadFromFirestore('pshop_user_flavors_' + u.name, []);
           setFavorites(userFavs);
           setUserFlavors(userFlav);
         } else {
@@ -1938,7 +1982,7 @@
                   className="w-full h-full object-contain drop-shadow-2xl animate-pulse"
                 />
               </div>
-              <p className="text-pink-300 text-lg">Chargement...</p>
+              <p className="text-pink-300 text-lg">Chargement depuis Firebase...</p>
             </Card>
           </div>
         );
@@ -2079,6 +2123,3 @@
   </script>
 </body>
 </html>
-
-
-
