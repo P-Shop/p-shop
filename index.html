@@ -1760,23 +1760,37 @@ const AdminProductsView = ({ products, onAddProduct, onEditProduct, onDeleteProd
       const [loading, setLoading] = useState(true);
 
       // Chargement initial des données depuis Firebase
-      useEffect(() => {
-        const loadData = async () => {
-          setLoading(true);
-          try {
-            console.log('🔄 Chargement des données depuis Firebase...');
-            
-            const loadedUsers = await loadFromFirestore('pshop_users', INITIAL_USERS);
-            const loadedProducts = await loadFromFirestore('pshop_products', INITIAL_PRODUCTS);
-            const loadedOrders = await loadFromFirestore('pshop_orders', []);
-            const loadedFlavors = await loadFromFirestore('pshop_all_flavors', INITIAL_FLAVORS);
-            const loadedSurvey = await loadFromFirestore('pshop_survey_results', {});
+useEffect(() => {
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      console.log('🔄 Chargement des données depuis Firebase...');
+      
+      const loadedUsers = await loadFromFirestore('pshop_users', INITIAL_USERS);
+      const loadedProducts = await loadFromFirestore('pshop_products', INITIAL_PRODUCTS);
+      const loadedOrders = await loadFromFirestore('pshop_orders', []);
+      const loadedFlavors = await loadFromFirestore('pshop_all_flavors', INITIAL_FLAVORS);
+      const loadedSurvey = await loadFromFirestore('pshop_survey_results', {});
 
-            setUsers(loadedUsers);
-            setProducts(loadedProducts);
-            setOrders(loadedOrders);
-            setAllFlavors(loadedFlavors);
-            setSurveyResults(loadedSurvey);
+      // NETTOYAGE DES PRODUITS - CORRECTION DES DONNÉES CORROMPUES
+      const cleanedProducts = loadedProducts.filter(p => {
+        if (!p || typeof p !== 'object') return false;
+        if (!p.id || !p.name || p.price === undefined || p.stock === undefined) {
+          console.warn('⚠️ Produit invalide détecté et supprimé:', p);
+          return false;
+        }
+        return true;
+      }).map(p => ({
+        ...p,
+        price: Number(p.price) || 0,
+        stock: Number(p.stock) || 0
+      }));
+
+      setUsers(loadedUsers);
+      setProducts(cleanedProducts);
+      setOrders(loadedOrders);
+      setAllFlavors(loadedFlavors);
+      setSurveyResults(loadedSurvey);
             
             console.log('✅ Toutes les données chargées');
           } catch (error) {
