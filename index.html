@@ -1768,17 +1768,12 @@
             const loadedOrders = await loadFromFirestore('pshop_orders', []);
             const loadedFlavors = await loadFromFirestore('pshop_all_flavors', INITIAL_FLAVORS);
             const loadedSurvey = await loadFromFirestore('pshop_survey_results', {});
-            const currentUser = await loadFromFirestore('pshop_current_user', null);
-            const rememberMeStatus = await loadFromFirestore('pshop_remember_me', false);
 
             setUsers(loadedUsers);
             setProducts(loadedProducts);
             setOrders(loadedOrders);
             setAllFlavors(loadedFlavors);
             setSurveyResults(loadedSurvey);
-            
-            // NE PAS auto-connecter automatiquement - l'utilisateur doit se connecter manuellement
-            console.log('ℹ️ Aucune auto-connexion - Veuillez vous connecter');
             
             console.log('✅ Toutes les données chargées');
           } catch (error) {
@@ -1851,7 +1846,6 @@
         if (u) {
           setUser(u);
           
-          // Sauvegarder l'option "rester connecté"
           await saveToFirestore('pshop_remember_me', rememberMe);
           
           const userFavs = await loadFromFirestore('pshop_favorites_' + u.name, []);
@@ -1883,7 +1877,7 @@
         if (form.referralCode) {
           const referrerIndex = users.findIndex(u => u.referralCode === form.referralCode);
           if (referrerIndex !== -1) {
-            newUser.points = 50; // Bonus filleul
+            newUser.points = 50;
             updatedUsers[referrerIndex] = {
               ...updatedUsers[referrerIndex],
               points: (updatedUsers[referrerIndex].points || 0) + 100
@@ -1891,11 +1885,9 @@
           }
         }
 
-        // Ajouter le nouvel utilisateur
         updatedUsers.push(newUser);
         setUsers(updatedUsers);
         
-        // IMPORTANT: Sauvegarder immédiatement dans Firebase
         await saveToFirestore('pshop_users', updatedUsers);
         await saveToFirestore('pshop_remember_me', rememberMe);
         
@@ -1906,7 +1898,6 @@
       }, [users]);
 
       const handleLogout = useCallback(async () => {
-        // Effacer l'option "rester connecté" lors de la déconnexion manuelle
         await saveToFirestore('pshop_remember_me', false);
         await saveToFirestore('pshop_current_user', null);
         
@@ -1971,20 +1962,17 @@
           pointsEarned
         };
 
-        // Mettre à jour stock
         setProducts(prev => prev.map(p => {
           const cartItem = cart.find(c => c.id === p.id);
           return cartItem ? {...p, stock: p.stock - cartItem.qty} : p;
         }));
 
-        // Ajouter points au client
         setUsers(prev => prev.map(u => 
           u.name === user.name 
             ? {...u, points: (u.points || 0) + pointsEarned}
             : u
         ));
 
-        // Mettre à jour l'utilisateur courant
         setUser(prev => ({...prev, points: (prev.points || 0) + pointsEarned}));
 
         setOrders(prev => [...prev, newOrder]);
@@ -2043,13 +2031,11 @@
       const handleSurveySubmit = useCallback((selectedFlavors) => {
         setUserFlavors(selectedFlavors);
 
-        // Ajouter nouveaux goûts à la liste globale
         const newFlavors = selectedFlavors.filter(f => !allFlavors.includes(f));
         if (newFlavors.length > 0) {
           setAllFlavors(prev => [...prev, ...newFlavors]);
         }
 
-        // Mettre à jour résultats sondage
         setSurveyResults(prev => {
           const updated = {...prev};
           selectedFlavors.forEach(flavor => {
@@ -2284,4 +2270,3 @@
   </script>
 </body>
 </html>
-
