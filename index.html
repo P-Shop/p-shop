@@ -2489,6 +2489,33 @@ const QRScannerModal = ({ onClose, onValidate }) => {
             onLogout={handleLogout}
             points={user.points || 0}
           />
+          
+
+<button 
+  onClick={async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      alert('✅ CAMÉRA FONCTIONNE !');
+      stream.getTracks().forEach(track => track.stop());
+    } catch (error) {
+      alert('❌ ERREUR: ' + error.name + ' - ' + error.message);
+    }
+  }}
+  style={{
+    position: 'fixed',
+    top: '80px',
+    right: '10px',
+    zIndex: 9999,
+    padding: '15px',
+    background: 'red',
+    color: 'white',
+    fontWeight: 'bold',
+    borderRadius: '10px',
+    border: '2px solid white'
+  }}
+>
+  TEST CAMÉRA
+</button>
 
           <div className="max-w-7xl mx-auto p-6">
             {user.role === 'client' && view === 'home' && (
@@ -2634,3 +2661,5 @@ const QRScannerModal = ({ onClose, onValidate }) => {
 </body>
 </html>
 
+
+ 
