@@ -1,19 +1,40 @@
 {
-  "name": "P-Shop - Coques Premium",
+  "name": "P-Shop - Boutique de Puff Premium",
   "short_name": "P-Shop",
-  "description": "Votre boutique de coques téléphone premium",
+  "description": "Boutique de Puff avec programme de fidélité et parrainage",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#581c87",
+  "background_color": "#7c3aed",
   "theme_color": "#ec4899",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
   "icons": [
+    {
+      "src": "https://i.postimg.cc/ZRscyVKS/b4beb632-78c8-4f8d-8491-02da1b2545ee.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "https://i.postimg.cc/ZRscyVKS/b4beb632-78c8-4f8d-8491-02da1b2545ee.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "https://i.postimg.cc/ZRscyVKS/b4beb632-78c8-4f8d-8491-02da1b2545ee.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://i.postimg.cc/ZRscyVKS/b4beb632-78c8-4f8d-8491-02da1b2545ee.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
-  ]
+  ],
+  "categories": ["shopping", "lifestyle"],
+  "lang": "fr-FR",
+  "dir": "ltr"
 }
-
