@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1960,23 +1961,23 @@
     function App() {
       // Données initiales
       const INITIAL_USERS = [
-  { 
-    name: 'Bradley', 
-    password: 'Brad@mar270508', 
-    role: 'producer', 
-    phone: '', 
-    referralCode: 'PUFFBRA123456',
-    points: 0
-  },
-  { 
-    name: 'Kmb',  // ⬅️ Changez ce nom
-    password: 'Kmb123456',  // ⬅️ Changez ce mot de passe
-    role: 'producer', 
-    phone: '', 
-    referralCode: 'PUFFVEN789012',
-    points: 0
-  }
-];
+        { 
+          name: 'Bradley', 
+          password: 'Brad@mar270508', 
+          role: 'producer', 
+          phone: '', 
+          referralCode: 'PUFFBRA123456',
+          points: 0
+        },
+        { 
+          name: 'Kmb',
+          password: 'Kmb123456',
+          role: 'producer', 
+          phone: '', 
+          referralCode: 'PUFFVEN789012',
+          points: 0
+        }
+      ];
       
       const INITIAL_PRODUCTS = [
         { id: 1, name: 'Coque Galaxy', price: 10.00, stock: 10, img: 'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=400', desc: 'Design Puff Jr coloré' },
@@ -2010,36 +2011,51 @@
           try {
             console.log('🔄 Chargement des données depuis Firebase...');
             
-            const loadedUsers = await loadFromFirestore('pshop_users', INITIAL_USERS);
-            const loadedProducts = await loadFromFirestore('pshop_products', INITIAL_PRODUCTS);
-            const loadedOrders = await loadFromFirestore('pshop_orders', []);
-            const loadedFlavors = await loadFromFirestore('pshop_all_flavors', INITIAL_FLAVORS);
-            const loadedSurvey = await loadFromFirestore('pshop_survey_results', {});
+            // CHARGER LES DONNÉES - NE JAMAIS ÉCRASER AVEC DES VALEURS PAR DÉFAUT
+            const loadedUsers = await loadFromFirestore('pshop_users', null);
+            const loadedProducts = await loadFromFirestore('pshop_products', null);
+            const loadedOrders = await loadFromFirestore('pshop_orders', null);
+            const loadedFlavors = await loadFromFirestore('pshop_all_flavors', null);
+            const loadedSurvey = await loadFromFirestore('pshop_survey_results', null);
 
-            // NETTOYAGE DES PRODUITS
-            const cleanedProducts = loadedProducts.filter(p => {
-              if (!p || typeof p !== 'object') return false;
-              if (!p.id || !p.name || p.price === undefined || p.stock === undefined) {
-                console.warn('⚠️ Produit invalide détecté et supprimé:', p);
-                return false;
-              }
-              return true;
-            }).map(p => ({
-              ...p,
-              price: Number(p.price) || 0,
-              stock: Number(p.stock) || 0
-            }));
+            // INITIALISER SEULEMENT SI FIREBASE EST VIDE (première utilisation)
+            if (!loadedUsers || loadedUsers.length === 0) {
+              console.log('⚠️ Aucun utilisateur trouvé, initialisation...');
+              await saveToFirestore('pshop_users', INITIAL_USERS);
+              setUsers(INITIAL_USERS);
+            } else {
+              setUsers(loadedUsers);
+            }
 
-            setUsers(loadedUsers);
-            setProducts(cleanedProducts);
-            setOrders(loadedOrders);
-            setAllFlavors(loadedFlavors);
-            setSurveyResults(loadedSurvey);
+            // NETTOYAGE ET INITIALISATION DES PRODUITS
+            if (!loadedProducts || loadedProducts.length === 0) {
+              console.log('⚠️ Aucun produit trouvé, initialisation...');
+              await saveToFirestore('pshop_products', INITIAL_PRODUCTS);
+              setProducts(INITIAL_PRODUCTS);
+            } else {
+              const cleanedProducts = loadedProducts.filter(p => {
+                if (!p || typeof p !== 'object') return false;
+                if (!p.id || !p.name || p.price === undefined || p.stock === undefined) {
+                  console.warn('⚠️ Produit invalide détecté et supprimé:', p);
+                  return false;
+                }
+                return true;
+              }).map(p => ({
+                ...p,
+                price: Number(p.price) || 0,
+                stock: Number(p.stock) || 0
+              }));
+              setProducts(cleanedProducts);
+            }
+
+            setOrders(loadedOrders || []);
+            setAllFlavors(loadedFlavors || INITIAL_FLAVORS);
+            setSurveyResults(loadedSurvey || {});
             
             // VÉRIFIER SI ON DOIT RESTER CONNECTÉ (LocalStorage)
             const savedUsername = localStorage.getItem('pshop_remember_user');
             if (savedUsername) {
-              const savedUser = loadedUsers.find(u => u.name === savedUsername);
+              const savedUser = (loadedUsers || INITIAL_USERS).find(u => u.name === savedUsername);
               if (savedUser) {
                 setUser(savedUser);
                 
@@ -2062,22 +2078,31 @@
         loadData();
       }, []);
 
-      // Sauvegarde automatique dans Firebase
+      // Sauvegarde automatique dans Firebase AVEC DEBOUNCE
       useEffect(() => { 
         if (!loading && users.length > 0) {
-          saveToFirestore('pshop_users', users);
+          const timer = setTimeout(() => {
+            saveToFirestore('pshop_users', users);
+          }, 500); // Attend 500ms avant de sauvegarder
+          return () => clearTimeout(timer);
         }
       }, [users, loading]);
       
       useEffect(() => { 
         if (!loading && products.length > 0) {
-          saveToFirestore('pshop_products', products);
+          const timer = setTimeout(() => {
+            saveToFirestore('pshop_products', products);
+          }, 500);
+          return () => clearTimeout(timer);
         }
       }, [products, loading]);
       
       useEffect(() => { 
-        if (!loading) {
-          saveToFirestore('pshop_orders', orders);
+        if (!loading && orders.length >= 0) { // Accepter tableau vide
+          const timer = setTimeout(() => {
+            saveToFirestore('pshop_orders', orders);
+          }, 500);
+          return () => clearTimeout(timer);
         }
       }, [orders, loading]);
       
@@ -2150,24 +2175,24 @@
         };
 
         // Bonus parrainage
-let updatedUsers = [...users];
-if (form.referralCode) {
-  // CODE PROMO SPÉCIAL 200 POINTS
-  if (form.referralCode === 'PUFF200') {
-    newUser.points = 200;
-    alert('🎉 Code promo spécial activé ! Vous recevez 200 points de bienvenue !');
-  } else {
-    // Code parrainage normal
-    const referrerIndex = users.findIndex(u => u.referralCode === form.referralCode);
-    if (referrerIndex !== -1) {
-      newUser.points = 50;
-      updatedUsers[referrerIndex] = {
-        ...updatedUsers[referrerIndex],
-        points: (updatedUsers[referrerIndex].points || 0) + 100
-      };
-    }
-  }
-}
+        let updatedUsers = [...users];
+        if (form.referralCode) {
+          // CODE PROMO SPÉCIAL 200 POINTS
+          if (form.referralCode === 'PUFF200') {
+            newUser.points = 200;
+            alert('🎉 Code promo spécial activé ! Vous recevez 200 points de bienvenue !');
+          } else {
+            // Code parrainage normal
+            const referrerIndex = users.findIndex(u => u.referralCode === form.referralCode);
+            if (referrerIndex !== -1) {
+              newUser.points = 50;
+              updatedUsers[referrerIndex] = {
+                ...updatedUsers[referrerIndex],
+                points: (updatedUsers[referrerIndex].points || 0) + 100
+              };
+            }
+          }
+        }
 
         updatedUsers.push(newUser);
         setUsers(updatedUsers);
@@ -2530,48 +2555,47 @@ if (form.referralCode) {
                 <h2 className="text-2xl font-black text-white mb-4">Scanner QR Code</h2>
                 <Button onClick={() => setShowScanner(true)}>
                   <Icon name="Camera" size={20} />
-                  OUVRIR LE SCANNER
-                </Button>
-              </Card>
-            )}
-          </div>
+OUVRIR LE SCANNER
+</Button>
+</Card>
+)}
+</div>
+{selectedProduct && (
+        <Modal
+          product={selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+          onAddToCart={user.role === 'client' ? addToCart : null}
+          isFavorite={favorites.includes(selectedProduct.id)}
+          onToggleFavorite={user.role === 'client' ? toggleFavorite : null}
+        />
+      )}
 
-          {selectedProduct && (
-            <Modal
-              product={selectedProduct}
-              onClose={() => setSelectedProduct(null)}
-              onAddToCart={user.role === 'client' ? addToCart : null}
-              isFavorite={favorites.includes(selectedProduct.id)}
-              onToggleFavorite={user.role === 'client' ? toggleFavorite : null}
-            />
-          )}
+      {showSurvey && (
+        <SurveyModal
+          onClose={() => setShowSurvey(false)}
+          flavors={allFlavors}
+          onSubmit={handleSurveySubmit}
+          userFlavors={userFlavors}
+        />
+      )}
 
-          {showSurvey && (
-            <SurveyModal
-              onClose={() => setShowSurvey(false)}
-              flavors={allFlavors}
-              onSubmit={handleSurveySubmit}
-              userFlavors={userFlavors}
-            />
-          )}
+      {showScanner && (
+        <QRScannerModal
+          onClose={() => setShowScanner(false)}
+          onValidate={handleScannerValidate}
+        />
+      )}
 
-          {showScanner && (
-            <QRScannerModal
-              onClose={() => setShowScanner(false)}
-              onValidate={handleScannerValidate}
-            />
-          )}
+      {showTutorial && (
+        <TutorialModal
+          onClose={() => setShowTutorial(false)}
+        />
+      )}
+    </div>
+  );
+}
 
-          {showTutorial && (
-            <TutorialModal
-              onClose={() => setShowTutorial(false)}
-            />
-          )}
-        </div>
-      );
-    }
-
-    // ==================== RENDU FINAL ====================
+// ==================== RENDU FINAL ====================
     ReactDOM.render(<App />, document.getElementById('root'));
   </script>
   <!-- Service Worker - METTRE ICI -->
@@ -2582,4 +2606,3 @@ if (form.referralCode) {
     </script>
 </body>
 </html>
-
