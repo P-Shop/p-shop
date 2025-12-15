@@ -2433,12 +2433,36 @@ function App() {
   await saveToFirestore('pshop_users', INITIAL_USERS);
   setUsers(INITIAL_USERS);
 } else if (loadedUsers.length === 0) {
-  console.log('⚠️ Base vide détectée, restauration vendeurs...');
-  await saveToFirestore('pshop_users', INITIAL_USERS);
-  setUsers(INITIAL_USERS);
+  console.log('⚠️ Base vide détectée, restauration vendeurs UNIQUEMENT...');
+  // NE PAS ÉCRASER - Juste restaurer les admins manquants
+  const adminsOnly = INITIAL_USERS.filter(u => u.role === 'producer');
+  await saveToFirestore('pshop_users', adminsOnly);
+  setUsers(adminsOnly);
+  alert('⚠️ Erreur de synchronisation détectée. Seuls les comptes administrateurs ont été restaurés.');
 } else {
   console.log(`✅ ${loadedUsers.length} utilisateurs chargés depuis Firebase`);
-  setUsers(loadedUsers);
+  
+  // 🛡️ PROTECTION: Vérifier que les admins existent toujours
+  let finalUsers = [...loadedUsers];
+  let needsUpdate = false;
+  
+  INITIAL_USERS.forEach(admin => {
+    if (admin.role === 'producer') {
+      const existingAdmin = finalUsers.find(u => u.name === admin.name && u.role === 'producer');
+      if (!existingAdmin) {
+        console.log(`🔧 Restauration admin manquant: ${admin.name}`);
+        finalUsers.push(admin);
+        needsUpdate = true;
+      }
+    }
+  });
+  
+  if (needsUpdate) {
+    await saveToFirestore('pshop_users', finalUsers);
+    alert('✅ Comptes administrateurs restaurés avec succès !');
+  }
+  
+  setUsers(finalUsers);
 }
 
         if (!loadedProducts || loadedProducts.length === 0) {
@@ -2583,7 +2607,15 @@ function App() {
   }, [users]);
 
   const handleRegister = useCallback(async (form, rememberMe) => {
-    if (users.find(u => u.name === form.name)) return alert('Ce nom d\'utilisateur existe déjà');
+    // 🛡️ PROTECTION: Empêcher création de compte avec nom d'admin
+    const PROTECTED_NAMES = ['Bradley', 'Kmb', 'brad', 'kmb', 'BRADLEY', 'KMB'];
+    if (PROTECTED_NAMES.includes(form.name)) {
+      return alert('❌ Ce nom d\'utilisateur est réservé. Veuillez en choisir un autre.');
+    }
+    
+    if (users.find(u => u.name === form.name)) {
+      return alert('❌ Ce nom d\'utilisateur existe déjà');
+    }
     
     const newUser = {
       name: form.name,
@@ -2870,8 +2902,14 @@ function App() {
   }, []);
 
   const deleteUser = useCallback((username) => {
+    // 🛡️ PROTECTION: Empêcher suppression des admins
+    const PROTECTED_ADMINS = ['Bradley', 'Kmb'];
+    if (PROTECTED_ADMINS.includes(username)) {
+      return alert('❌ Impossible de supprimer un compte administrateur protégé !');
+    }
+    
     setUsers(prev => prev.filter(u => u.name !== username));
-    alert(`Compte de ${username} supprimé !`);
+    alert(`✅ Compte de ${username} supprimé !`);
   }, []);
 
   // Rendu
@@ -3048,4 +3086,5 @@ ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
 </html>
+
 
