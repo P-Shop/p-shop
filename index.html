@@ -102,21 +102,21 @@ const S = {
   card: "bg-black/60 backdrop-blur-xl rounded-2xl border-2 border-cyan-500/30 overflow-hidden shadow-[0_0_40px_rgba(0,240,255,0.2)] hover:shadow-[0_0_60px_rgba(0,240,255,0.4)] transition-all duration-300"
 };
 
-// ==================== HELPERS FIREBASE ====================
 const saveToFirestore = async (collection, data) => {
   try {
-    if (collection === 'pshop_products') {
+    if (collection === 'pshop_products' || collection === 'pshop_users') {
       const batch = db.batch();
       const snapshot = await db.collection(collection).get();
       snapshot.docs.forEach(doc => {
         batch.delete(doc.ref);
       });
-      data.forEach(product => {
-        const docRef = db.collection(collection).doc(String(product.id));
-        batch.set(docRef, product);
+      data.forEach(item => {
+        const docId = collection === 'pshop_users' ? item.name : String(item.id);
+        const docRef = db.collection(collection).doc(docId);
+        batch.set(docRef, item);
       });
       await batch.commit();
-      console.log(`✅ Sauvegarde ${collection} réussie (${data.length} produits)`);
+      console.log(`✅ Sauvegarde ${collection} réussie (${data.length} éléments)`);
       return;
     }
     await db.collection(collection).doc('data').set({ value: data });
@@ -129,12 +129,12 @@ const saveToFirestore = async (collection, data) => {
 
 const loadFromFirestore = async (collection, defaultValue) => {
   try {
-    if (collection === 'pshop_products') {
+    if (collection === 'pshop_products' || collection === 'pshop_users') {
       const snapshot = await db.collection(collection).get();
       if (!snapshot.empty) {
-        const products = snapshot.docs.map(doc => doc.data());
-        console.log(`✅ Chargement ${collection} réussi (${products.length} produits)`);
-        return products;
+        const items = snapshot.docs.map(doc => doc.data());
+        console.log(`✅ Chargement ${collection} réussi (${items.length} éléments)`);
+        return items;
       }
       console.log(`⚠️ ${collection} vide, utilisation valeur par défaut`);
       return defaultValue;
@@ -151,7 +151,6 @@ const loadFromFirestore = async (collection, defaultValue) => {
     return defaultValue;
   }
 };
-
 // ==================== COMPOSANTS ICÔNES ====================
 const Icon = ({ name, size = 20, className = "" }) => {
   const icons = {
@@ -2429,13 +2428,18 @@ function App() {
         const loadedFlavors = await loadFromFirestore('pshop_all_flavors', null);
         const loadedSurvey = await loadFromFirestore('pshop_survey_results', null);
 
-        if (!loadedUsers || loadedUsers.length === 0) {
-          console.log('⚠️ Aucun utilisateur trouvé, initialisation...');
-          await saveToFirestore('pshop_users', INITIAL_USERS);
-          setUsers(INITIAL_USERS);
-        } else {
-          setUsers(loadedUsers);
-        }
+        if (!loadedUsers) {
+  console.log('⚠️ Première initialisation Firebase...');
+  await saveToFirestore('pshop_users', INITIAL_USERS);
+  setUsers(INITIAL_USERS);
+} else if (loadedUsers.length === 0) {
+  console.log('⚠️ Base vide détectée, restauration vendeurs...');
+  await saveToFirestore('pshop_users', INITIAL_USERS);
+  setUsers(INITIAL_USERS);
+} else {
+  console.log(`✅ ${loadedUsers.length} utilisateurs chargés depuis Firebase`);
+  setUsers(loadedUsers);
+}
 
         if (!loadedProducts || loadedProducts.length === 0) {
           console.log('⚠️ Aucun produit trouvé, initialisation...');
@@ -3044,3 +3048,4 @@ ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
 </html>
+
